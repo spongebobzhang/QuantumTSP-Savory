@@ -5,7 +5,7 @@ To install necessary packages, in main directory run:
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
 ```
 
-To simulate the process given a certain window size and werner parameter, run:
+To simulate the process with a fixed certain window size and werner parameter, run:
 
 ```bash
 julia --project=. simulation/qtsp/run_qtsp_experiments.jl
