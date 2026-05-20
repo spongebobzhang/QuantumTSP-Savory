@@ -1,4 +1,10 @@
 # Quick Start 
+
+To install necessary packages, in main directory run:
+```bash
+julia --project=. -e 'using Pkg; Pkg.instantiate()'
+```
+
 To simulate the process given a certain window size and werner parameter, run:
 
 ```bash
