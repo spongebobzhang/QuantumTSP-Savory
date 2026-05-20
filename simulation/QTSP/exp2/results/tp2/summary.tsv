@@ -1,4 +1,0 @@
-target_tp	initial_window_size	initial_werner_w	iterations	final_observed_tp	final_window_estimate	final_window_used	final_werner_w	final_send_rate	output_txt
-2.0	10	0.75	5000	1.9715	7.000068760769507	8	0.8799728180203227	3.0392945860114318	/home/fangzz/QuantumSavory/QuantumSavory.jl/simulation/qtsp/exp2/results/target_2p0_W10_w0p75.txt
-2.0	15	0.8	5000	1.956	6.999726532719417	7	0.8799477586030695	3.0399291335358334	/home/fangzz/QuantumSavory/QuantumSavory.jl/simulation/qtsp/exp2/results/target_2p0_W15_w0p8.txt
-2.0	5	0.9	5000	2.0405	6.999476783898024	7	0.8799661428566216	3.039463612631593	/home/fangzz/QuantumSavory/QuantumSavory.jl/simulation/qtsp/exp2/results/target_2p0_W5_w0p9.txt
