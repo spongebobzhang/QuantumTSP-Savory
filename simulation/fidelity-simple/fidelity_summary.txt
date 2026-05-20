@@ -1,0 +1,6 @@
+T = 200.0
+successes = 909
+throughput_pairs_per_time = 4.545
+mean_ZZ = 0.9999999999999999
+mean_XX = 0.9999999999999999
+mean_fidelity_phi_plus = 0.9999999999999999

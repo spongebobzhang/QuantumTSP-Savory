@@ -1,0 +1,5 @@
+T = 200.0
+successes = 1240
+throughput_pairs_per_time = 6.2
+mean_ZZ = 0.9999999999999998
+mean_XX = 0.9999999999999998

@@ -1,0 +1,12 @@
+Manifest.toml
+Manifest*.toml
+build
+.gitignore
+ROADMAP.md
+coverage
+*.cov
+.CondaPkg
+.venv
+.vscode
+dev
+.csv
