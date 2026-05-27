@@ -50,11 +50,7 @@ File roles:
 - `protocol/qtsp_window_update_runner.jl`: the generic network window-update runner. It
   builds a `RegisterNet` from a topology, uses routed probes, and defines
   `run_qtsp_window_update(...)` for network runs.
-- `two-node/qtsp_two_node_helpers.jl`: two-node helpers. It builds a two-node
-  QTSP network and provides `run_two_node_qtsp(...)` for simple two-node runs and probe simulations.
-- `two-node/qtsp_window_update_two_node.jl`: the older two-node window-update convenience
-  layer. It wires the generic protocol to the two-node helper and provides a
-  two-node probe runner.
+
 
 For now `protocol/qtsp_components.jl` and
 `protocol/qtsp_window_update_protocol.jl` are designed for one flow (from one
