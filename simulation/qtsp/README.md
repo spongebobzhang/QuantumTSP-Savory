@@ -53,6 +53,6 @@ File roles:
 
 For now `protocol/qtsp_components.jl` and
 `protocol/qtsp_window_update_protocol.jl` are designed for one flow (from one
-source to one destination). `run_network_qtsp(...)` supports one routed flow
+source to one destination). It supports one routed flow
 with hop-by-hop forwarding. More work is needed for multiflow, routing policy,
 and repeater-style swapping.
