@@ -26,8 +26,7 @@ To simulate the continuous update process on a network, run:
 julia --project=. simulation/qtsp/run_qtsp_window_update.jl
 ```
 
-Parameters can be set in run_qtsp_window_update.jl. The default topology is a
-4x4 grid and the default flow is 2 -> 11. The default output file is
+Parameters can be set in run_qtsp_window_update.jl. The default output file is
 qtsp_window_update_results.txt.
 
 To plot the result after window update, in qtsp directory run:
