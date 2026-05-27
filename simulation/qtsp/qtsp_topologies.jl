@@ -8,7 +8,7 @@ function qtsp_graph_from_edges(node_count::Int, edges_list)
 
     graph
 end
-
+# Graph to be set
 function qtsp_graph()
     edges_list = [
         (1, 3), (1, 5),
