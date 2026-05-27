@@ -15,9 +15,10 @@ function qtsp_graph()
         (2, 3),
         (3, 4),
         (4, 5), (4, 6),
-        (5, 6),
-        (6, 7)
+        (5, 6), (5, 8),
+        (6, 7), (6, 8),
+        (7, 8)
     ]
-
-    qtsp_graph_from_edges(7, edges_list)
+    # input node_count and edges_list to create the graph
+    qtsp_graph_from_edges(8, edges_list)
 end

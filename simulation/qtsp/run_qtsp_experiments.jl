@@ -9,26 +9,26 @@ const QTSP_PRINT_STATE_DETAILS = false
 const QTSP_DEFAULT_EXPERIMENT_CASE = (;
     topology=qtsp_graph,
     source_node=1,
-    destination_node=7,
+    destination_node=8,
     flow_uuid=QTSP_DEFAULT_FLOW_UUID,
-    state_count=10,
-    window_size=3,
+    state_count=nothing,
+    window_size=5,
     werner_w=0.9,
-    chi=nothing,
-    send_rate=1.0,
+    chi=30.0,
+    send_rate=nothing,
     distance_km=25.0,
     a_eta=1.0,
     beta_per_km=0.046,
     detector_a_p=0.9,
-    detection_prob=1.0,
+    detection_prob=nothing,
     memory_slots=100,
     classical_delay=0.1,
     quantum_delay=1.0,
     send_interval=nothing,
     initial_delay=0.0,
     source_ack_timeout=10.0,
-    window_stats_interval=Inf,
-    sim_time=50.0,
+    window_stats_interval=50,
+    sim_time=500.0,
 )
 
 const QTSP_EXPERIMENT_CASES = (
@@ -170,7 +170,7 @@ end
 
 function qtsp_run_network_case(case)
     memory_slots = qtsp_get(case, :memory_slots, QTSP_DEFAULT_MEMORY_SLOTS)
-    topology = qtsp_get(case, :topology, qtsp_grid4x4_graph)
+    topology = qtsp_get(case, :topology, qtsp_graph)
     graph = topology()
     source_node = qtsp_get(case, :source_node, 1)
     destination_node = qtsp_get(case, :destination_node, Graphs.nv(graph))

@@ -5,7 +5,7 @@ To install necessary packages, in main directory run:
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
 ```
 
-**Added Components:** Network component is added into QTSP and window_update runnner is refined to be a generic one. For now the states will be forwarded hop by hop along the path without any swapping, and the path is based on A* algorithm.
+**Added Components:** Network component is added into QTSP and window_update runnner is refined to be a generic one. For now the states will be forwarded hop by hop along the path without any swapping, and the path finding is based on A* algorithm.
 
 **Usage:** In qtsp_topologies.jl edges_list can be set to create a network. Source and destination can set in run_qtsp_experiments.jl/run_qtsp_window_update.jl for two kinds of experiments. 
 
