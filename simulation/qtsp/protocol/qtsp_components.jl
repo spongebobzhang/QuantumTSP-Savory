@@ -145,6 +145,51 @@ function qtsp_install_wrapped_qchannel!(net::RegisterNet, source_node::Int,
 
     wrapped
 end
+# calculate the next hop
+function qtsp_next_hop(net::RegisterNet, current_node::Int, destination_node::Int)
+    current_node != destination_node || throw(ArgumentError(
+        "current_node and destination_node must be different. Got $(current_node).",
+    ))
+    # A* algorithm
+    path_edges = Graphs.a_star(net.graph, current_node, destination_node)
+    isempty(path_edges) && throw(ArgumentError(
+        "No route from current_node=$(current_node) to destination_node=$(destination_node).",
+    ))
+
+    edge = first(path_edges)
+    if edge.src == current_node
+        edge.dst
+    elseif edge.dst == current_node
+        edge.src
+    else
+        throw(ArgumentError(
+            "Shortest-path edge $(edge) is not connected to current_node=$(current_node).",
+        ))
+    end
+end
+
+function qtsp_previous_hop(net::RegisterNet, source_node::Int,
+        destination_node::Int)
+    source_node != destination_node || throw(ArgumentError(
+        "source_node and destination_node must be different. Got $(source_node).",
+    ))
+
+    path_edges = Graphs.a_star(net.graph, source_node, destination_node)
+    isempty(path_edges) && throw(ArgumentError(
+        "No route from source_node=$(source_node) to destination_node=$(destination_node).",
+    ))
+
+    edge = last(path_edges)
+    if edge.src == destination_node
+        edge.dst
+    elseif edge.dst == destination_node
+        edge.src
+    else
+        throw(ArgumentError(
+            "Shortest-path edge $(edge) is not connected to destination_node=$(destination_node).",
+        ))
+    end
+end
 
 # Helper functions for recording and printing QTSP experiment results
 @kwdef struct QTSPStateInfo
@@ -169,6 +214,18 @@ end
     detected::Bool = false
     failed_detection::Bool = false
     timed_out::Bool = false
+end
+
+@kwdef struct QTSPForwardInfo
+    flow_uuid::Int = QTSP_DEFAULT_FLOW_UUID
+    seq_num::Int
+    pair_id::Int
+    node::Int
+    previous_node::Int
+    next_node::Int
+    forward_slot::Int
+    receive_time::Float64
+    send_time::Float64
 end
 
 @kwdef mutable struct QTSPSourceControl
@@ -264,6 +321,19 @@ end
     receive_log::Vector{QTSPStateInfo}
     failure_log::Vector{QTSPStateInfo}
 end
+
+@kwdef struct QTSPQuantumRouter <: AbstractProtocol
+    sim::Simulation
+    net::RegisterNet
+    previous_node::Int
+    node::Int
+    destination_node::Int
+    state_count::Union{Int,Nothing} = nothing
+    forward_slot::Int
+    flow_uuid::Union{Int,Nothing} = nothing
+    forward_log::Vector{QTSPForwardInfo} = QTSPForwardInfo[]
+end
+
 """
 The source node will keep two kinds of slots: send slots and retain slots;
 retains slots are used to simulate the memory: it will keep the traveling qubits until they are acknowledged or timed out, 
@@ -522,10 +592,11 @@ It also records the state information and statistics.
     ))
     # initialize 
     source_mb = messagebuffer(net, source_node)
-    qch = qchannel(net, source_node=>destination_node)
+    next_hop = qtsp_next_hop(net, source_node, destination_node)
+    qch = qchannel(net, source_node=>next_hop)
     qch isa QTSPWrappedQuantumChannel || throw(ArgumentError(
         "QTSPSourceController requires a QTSPWrappedQuantumChannel. " *
-        "Call qtsp_install_wrapped_qchannel!(net, $(source_node), $(destination_node)) first.",
+        "Call qtsp_install_wrapped_qchannel!(net, $(source_node), $(next_hop)) first.",
     ))
     qtsp_current_window_size(window_size, source_retain_slots, control)
     qtsp_current_werner_w(werner_w, control)
@@ -727,12 +798,13 @@ This controller for destination is to receive the quantum states sent by the sou
     isnothing(detection_prob) || 0 <= detection_prob <= 1 ||
         throw(ArgumentError("detection_prob must be in [0, 1] or nothing. Got $(detection_prob)."))
 
-    qch = qchannel(net, source_node=>destination_node)
+    previous_hop = qtsp_previous_hop(net, source_node, destination_node)
+    qch = qchannel(net, previous_hop=>destination_node)
     qch isa QTSPWrappedQuantumChannel || throw(ArgumentError(
         "QTSPDestinationController requires a QTSPWrappedQuantumChannel. " *
-        "Call qtsp_install_wrapped_qchannel!(net, $(source_node), $(destination_node)) first.",
+        "Call qtsp_install_wrapped_qchannel!(net, $(previous_hop), $(destination_node)) first.",
     ))
-    ack_channel = channel(net, destination_node=>source_node; permit_forward=false)
+    ack_channel = channel(net, destination_node=>source_node; permit_forward=true)
     receive_slot = destination_receive_start_slot
     received_count = 0
 
@@ -799,4 +871,402 @@ This controller for destination is to receive the quantum states sent by the sou
             traceout!(net[source_node, source_retain_slot])
         traceout!(net[destination_node, receive_slot])
     end
+end
+
+@resumable function (prot::QTSPQuantumRouter)()
+    (; sim, net, previous_node, node, destination_node, state_count, forward_slot,
+        flow_uuid, forward_log) = prot
+
+    node != destination_node || throw(ArgumentError(
+        "QTSPQuantumRouter forwards through intermediate nodes only. Node $(node) is the destination.",
+    ))
+    !isnothing(state_count) && state_count > 0 || isnothing(state_count) ||
+        throw(ArgumentError("state_count must be positive or nothing. Got $(state_count)."))
+    forward_slot > 0 || throw(ArgumentError("forward_slot must be positive. Got $(forward_slot)."))
+    forward_slot <= length(net[node]) || throw(ArgumentError(
+        "Router node $(node) needs slot $(forward_slot), but it has $(length(net[node])) slots.",
+    ))
+    # listen to the channel from previous_node
+    incoming_qch = qchannel(net, previous_node=>node)
+    incoming_qch isa QTSPWrappedQuantumChannel || throw(ArgumentError(
+        "QTSPQuantumRouter requires a QTSPWrappedQuantumChannel for $(previous_node)=>$(node). " *
+        "Call qtsp_install_wrapped_qchannel!(net, $(previous_node), $(node)) first.",
+    ))
+
+    forwarded_count = 0
+    while !qtsp_state_cap_reached(forwarded_count, state_count)
+        # take the packet from channel and process
+        wrapper = @yield take!(incoming_qch, net[node, forward_slot])
+        receive_time = now(sim)
+
+        if !isnothing(flow_uuid) && wrapper.flow_uuid != flow_uuid
+            throw(ArgumentError(
+                "Router node $(node) received flow $(wrapper.flow_uuid), expected $(flow_uuid).",
+            ))
+        end
+
+        next_node = qtsp_next_hop(net, node, destination_node)
+        outgoing_qch = qchannel(net, node=>next_node)
+        outgoing_qch isa QTSPWrappedQuantumChannel || throw(ArgumentError(
+            "QTSPQuantumRouter requires a QTSPWrappedQuantumChannel for $(node)=>$(next_node). " *
+            "Call qtsp_install_wrapped_qchannel!(net, $(node), $(next_node)) first.",
+        ))
+
+        put!(outgoing_qch, wrapper, net[node, forward_slot])
+        send_time = now(sim)
+        push!(forward_log, QTSPForwardInfo(;
+            flow_uuid=wrapper.flow_uuid,
+            seq_num=wrapper.seq_num,
+            pair_id=wrapper.pair_id,
+            node,
+            previous_node,
+            next_node,
+            forward_slot,
+            receive_time,
+            send_time,
+        ))
+        forwarded_count += 1
+    end
+end
+
+function qtsp_install_wrapped_qchannels!(net::RegisterNet)
+    for (; src, dst) in Graphs.edges(net.graph)
+        qtsp_install_wrapped_qchannel!(net, src, dst)
+        qtsp_install_wrapped_qchannel!(net, dst, src)
+    end
+
+    net
+end
+
+function qtsp_routing_path(net::RegisterNet, source_node::Int,
+        destination_node::Int)
+    route = [source_node]
+    visited = Set(route)
+
+    while last(route) != destination_node
+        next_node = qtsp_next_hop(net, last(route), destination_node)
+        next_node in visited && throw(ArgumentError(
+            "QTSP routing loop detected while routing $(source_node)=>$(destination_node): $(route) then $(next_node).",
+        ))
+        push!(route, next_node)
+        push!(visited, next_node)
+    end
+
+    route
+end
+
+function qtsp_route_quantum_delay(net::RegisterNet, route)
+    sum(qchannel(net, src=>dst).queue.delay
+        for (src, dst) in zip(route[1:(end - 1)], route[2:end]))
+end
+
+function qtsp_route_classical_delay(net::RegisterNet, source_node::Int,
+        destination_node::Int)
+    route = qtsp_routing_path(net, source_node, destination_node)
+
+    sum(net.cchannels[src=>dst].delay
+        for (src, dst) in zip(route[1:(end - 1)], route[2:end]))
+end
+
+function estimated_qtsp_network_completion_time(; state_count,
+        route_quantum_delay, route_classical_delay, send_interval, initial_delay,
+        source_ack_timeout)
+    initial_delay + state_count *
+        (max(source_ack_timeout, route_quantum_delay + route_classical_delay) +
+         send_interval)
+end
+
+function launch_qtsp_quantum_routers!(sim, net; source_node, destination_node,
+        state_count, forward_slot, flow_uuid, forward_log)
+    for node in Graphs.vertices(net.graph)
+        (node == source_node || node == destination_node) && continue
+        for previous_node in Graphs.neighbors(net.graph, node)
+            @process QTSPQuantumRouter(;
+                sim,
+                net,
+                previous_node,
+                node,
+                destination_node,
+                state_count,
+                forward_slot,
+                flow_uuid,
+                forward_log,
+            )()
+        end
+    end
+
+    nothing
+end
+
+function qtsp_mean_or_nan(values)
+    collected = collect(values)
+    isempty(collected) ? NaN : sum(collected) / length(collected)
+end
+
+function run_network_qtsp(; net,
+        source_node,
+        destination_node,
+        state_count=nothing,
+        flow_uuid=QTSP_DEFAULT_FLOW_UUID,
+        werner_w=QTSP_DEFAULT_WERNER_W,
+        window_size=QTSP_DEFAULT_WINDOW_SIZE,
+        chi=QTSP_DEFAULT_CHI,
+        send_rate=nothing,
+        distance_km=QTSP_DEFAULT_DISTANCE_KM,
+        a_eta=QTSP_DEFAULT_A_ETA,
+        beta_per_km=QTSP_DEFAULT_BETA_PER_KM,
+        detector_a_p=QTSP_DEFAULT_DETECTOR_A_P,
+        detection_prob=nothing,
+        source_retain_slots=nothing,
+        source_retain_start_slot=QTSP_SOURCE_RETAIN_START_SLOT,
+        source_send_slot=nothing,
+        destination_receive_start_slot=QTSP_DESTINATION_RECEIVE_START_SLOT,
+        forward_slot=QTSP_DESTINATION_RECEIVE_START_SLOT,
+        send_interval=nothing,
+        initial_delay=QTSP_DEFAULT_INITIAL_DELAY,
+        source_ack_timeout=QTSP_DEFAULT_SOURCE_ACK_TIMEOUT,
+        window_stats_interval=QTSP_DEFAULT_WINDOW_STATS_INTERVAL,
+        rng=Random.default_rng(),
+        sim_time=QTSP_DEFAULT_SIM_TIME)
+    !isnothing(state_count) && state_count > 0 || isnothing(state_count) ||
+        throw(ArgumentError("state_count must be positive or nothing. Got $(state_count)."))
+    window_size > 0 || throw(ArgumentError("window_size must be positive. Got $(window_size)."))
+    distance_km >= 0 || throw(ArgumentError("distance_km must be non-negative. Got $(distance_km)."))
+    a_eta >= 0 || throw(ArgumentError("a_eta must be non-negative. Got $(a_eta)."))
+    beta_per_km >= 0 || throw(ArgumentError("beta_per_km must be non-negative. Got $(beta_per_km)."))
+    detector_a_p >= 0 || throw(ArgumentError("detector_a_p must be non-negative. Got $(detector_a_p)."))
+    source_retain_slots = something(source_retain_slots, window_size)
+    source_retain_slots >= window_size || throw(ArgumentError(
+        "source_retain_slots must be at least window_size. Got source_retain_slots=$(source_retain_slots), window_size=$(window_size).",
+    ))
+    source_send_slot = something(source_send_slot,
+        source_retain_start_slot + source_retain_slots)
+    initial_delay >= 0 || throw(ArgumentError("initial_delay must be non-negative. Got $(initial_delay)."))
+    source_ack_timeout > 0 || throw(ArgumentError("source_ack_timeout must be positive. Got $(source_ack_timeout)."))
+    window_stats_interval > 0 || throw(ArgumentError("window_stats_interval must be positive. Got $(window_stats_interval)."))
+
+    transmissivity = qtsp_transmissivity_from_distance(distance_km, a_eta,
+        beta_per_km)
+    detection_prob = something(detection_prob,
+        qtsp_detector_success_probability(detector_a_p, werner_w))
+    0 <= detection_prob <= 1 || throw(ArgumentError("detection_prob must be in [0, 1]. Got $(detection_prob)."))
+
+    if isnothing(send_rate)
+        isnothing(chi) && throw(ArgumentError("Provide either chi or send_rate."))
+        chi >= 0 || throw(ArgumentError("chi must be non-negative. Got $(chi)."))
+        send_rate = qtsp_source_generation_rate(chi, werner_w; distance_km,
+            a_eta, beta_per_km)
+    end
+    send_rate > 0 || throw(ArgumentError(
+        "The send rate must be positive. Got $(send_rate) for chi=$(chi), w=$(werner_w).",
+    ))
+    send_interval = something(send_interval, 1 / send_rate)
+    send_interval >= 0 || throw(ArgumentError("send_interval must be non-negative. Got $(send_interval)."))
+
+    sim = get_time_tracker(net)
+    qtsp_install_wrapped_qchannels!(net)
+    memory_slots = minimum(length(register) for register in net.registers)
+
+    route = qtsp_routing_path(net, source_node, destination_node)
+    route_quantum_delay = qtsp_route_quantum_delay(net, route)
+    route_classical_delay = qtsp_route_classical_delay(net, destination_node,
+        source_node)
+
+    run_until = if isnothing(sim_time)
+        isnothing(state_count) ?
+            QTSP_DEFAULT_SIM_TIME :
+            estimated_qtsp_network_completion_time(;
+                state_count,
+                route_quantum_delay,
+                route_classical_delay,
+                send_interval,
+                initial_delay,
+                source_ack_timeout,
+            ) + 1e-9
+    else
+        sim_time
+    end
+    run_until > 0 || throw(ArgumentError("sim_time must be positive. Got $(run_until)."))
+
+    send_log = QTSPStateInfo[]
+    receive_log = QTSPStateInfo[]
+    ack_log = QTSPStateInfo[]
+    timeout_log = QTSPStateInfo[]
+    late_ack_log = QTSPStateInfo[]
+    failure_log = QTSPStateInfo[]
+    window_log = QTSPWindowInfo[]
+    forward_log = QTSPForwardInfo[]
+
+    launch_qtsp_quantum_routers!(sim, net; source_node, destination_node,
+        state_count, forward_slot, flow_uuid, forward_log)
+
+    @process QTSPDestinationController(;
+        sim,
+        net,
+        source_node,
+        destination_node,
+        flow_uuid,
+        state_count,
+        window_size,
+        source_retain_start_slot,
+        destination_receive_start_slot,
+        detector_a_p,
+        detection_prob,
+        rng,
+        receive_log,
+        failure_log,
+    )()
+
+    @process QTSPSourceController(;
+        sim,
+        net,
+        source_node,
+        destination_node,
+        flow_uuid,
+        state_count,
+        source_stop_time=run_until,
+        window_size,
+        source_retain_slots,
+        werner_w,
+        source_retain_start_slot,
+        source_send_slot,
+        send_interval,
+        initial_delay,
+        source_ack_timeout,
+        window_stats_interval,
+        send_log,
+        ack_log,
+        timeout_log,
+        late_ack_log,
+        window_log,
+    )()
+
+    run(sim, run_until + QTSP_TIME_EPS)
+
+    send_by_key = Dict(qtsp_state_key(entry) => entry for entry in send_log)
+    receive_by_key = Dict(qtsp_state_key(entry) => entry for entry in receive_log)
+    ack_by_key = Dict(qtsp_state_key(entry) => entry for entry in ack_log)
+    timeout_by_key = Dict(qtsp_state_key(entry) => entry for entry in timeout_log)
+    failure_by_key = Dict(qtsp_state_key(entry) => entry for entry in failure_log)
+
+    state_seq_nums = sort!(unique(vcat(
+        Int[entry.seq_num for entry in send_log],
+        Int[entry.seq_num for entry in receive_log],
+        Int[entry.seq_num for entry in ack_log],
+        Int[entry.seq_num for entry in timeout_log],
+        Int[entry.seq_num for entry in late_ack_log],
+        Int[entry.seq_num for entry in failure_log],
+    )))
+    state_records = map(state_seq_nums) do seq_num
+        key = qtsp_state_key(flow_uuid, seq_num)
+        sent = get(send_by_key, key, nothing)
+        received = get(receive_by_key, key, nothing)
+        acked = get(ack_by_key, key, nothing)
+        timed_out = get(timeout_by_key, key, nothing)
+        failed = get(failure_by_key, key, nothing)
+        quantum_delivery_time = if !isnothing(sent) && !isnothing(received)
+            received.receive_time - sent.send_time
+        else
+            NaN
+        end
+
+        QTSPStateInfo(;
+            flow_uuid,
+            seq_num,
+            pair_id=isnothing(sent) ? missing : sent.pair_id,
+            source_node,
+            destination_node,
+            source_retain_slot=isnothing(sent) ? missing : sent.source_retain_slot,
+            source_send_slot=isnothing(sent) ? missing : sent.source_send_slot,
+            destination_slot=isnothing(received) ? missing : received.destination_slot,
+            send_time=isnothing(sent) ? NaN : sent.send_time,
+            receive_time=isnothing(received) ? NaN : received.receive_time,
+            ack_time=isnothing(acked) ? NaN : acked.ack_time,
+            timeout_time=isnothing(timed_out) ? NaN : timed_out.timeout_time,
+            quantum_delivery_time,
+            rtt=isnothing(acked) ? NaN : acked.rtt,
+            sent=!isnothing(sent),
+            received=!isnothing(received),
+            acked=!isnothing(acked),
+            detected=!isnothing(received) && isnothing(failed),
+            failed_detection=!isnothing(failed),
+            timed_out=!isnothing(timed_out),
+            observed_fidelity=isnothing(received) ? NaN : received.observed_fidelity,
+        )
+    end
+
+    acked_records = filter(record -> record.acked, state_records)
+    received_records = filter(record -> record.received, state_records)
+    fidelity_records = filter(record -> record.received &&
+        !isnan(record.observed_fidelity), state_records)
+    completion_times = [
+        (entry.ack_time for entry in ack_log)...,
+        (entry.timeout_time for entry in timeout_log)...,
+    ]
+    total_time = isnothing(state_count) ? run_until :
+        (isempty(completion_times) ? now(sim) : maximum(completion_times))
+
+    (;
+        state_count,
+        flow_uuid,
+        source_node,
+        destination_node,
+        route,
+        hop_count=length(route) - 1,
+        werner_w,
+        window_size,
+        expected_fidelity=qtsp_fidelity_from_werner(werner_w),
+        chi,
+        send_rate,
+        distance_km,
+        a_eta,
+        beta_per_km,
+        transmissivity,
+        detection_prob,
+        detector_a_p,
+        memory_slots,
+        source_retain_slots,
+        source_retain_start_slot,
+        source_send_slot,
+        destination_receive_start_slot,
+        forward_slot,
+        route_classical_delay,
+        route_quantum_delay,
+        send_interval,
+        initial_delay,
+        source_ack_timeout,
+        window_stats_interval,
+        sim_time=run_until,
+        total_time,
+        sent_states=length(send_log),
+        received_states=length(receive_log),
+        acked_states=length(ack_log),
+        forwarded_states=length(forward_log),
+        failed_detections=length(failure_log),
+        source_timeouts=length(timeout_log),
+        late_acks=length(late_ack_log),
+        unacked_at_source=length(send_log) - length(ack_log) - length(timeout_log),
+        delivery_throughput=isempty(receive_log) ? 0.0 : length(receive_log) / total_time,
+        acked_throughput=isempty(ack_log) ? 0.0 : length(ack_log) / total_time,
+        mean_quantum_delivery_time=qtsp_mean_or_nan(
+            record.quantum_delivery_time for record in received_records),
+        mean_rtt=qtsp_mean_or_nan(record.rtt for record in acked_records),
+        mean_observed_fidelity=qtsp_mean_or_nan(
+            record.observed_fidelity for record in fidelity_records),
+        send_log,
+        receive_log,
+        ack_log,
+        timeout_log,
+        late_ack_log,
+        failure_log,
+        forward_log,
+        window_log,
+        window_samples=length(window_log),
+        mean_window_sent=qtsp_mean_or_nan(entry.sent_count for entry in window_log),
+        mean_window_acked=qtsp_mean_or_nan(entry.acked_count for entry in window_log),
+        mean_window_timeouts=qtsp_mean_or_nan(entry.timeout_count for entry in window_log),
+        state_records,
+        sim,
+        net,
+    )
 end

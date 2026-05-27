@@ -1,8 +1,11 @@
-include(joinpath(@__DIR__, "..", "qtsp_window_update_two_node.jl"))
+include(joinpath(@__DIR__, "..", "protocol", "qtsp_window_update_runner.jl"))
 
 
 # cases outer loop
 const EXP2_TARGET_THROUGHPUTS = (1.0, 2.0)
+const EXP2_TOPOLOGY = qtsp_graph
+const EXP2_SOURCE_NODE = 1
+const EXP2_DESTINATION_NODE = 7
 
 # cases inner loop
 const EXP2_INITIAL_CASES = (
@@ -86,10 +89,15 @@ function run_exp2()
             println("  target_tp = ", target_tp)
             println("  initial_window_size = ", case.initial_window_size)
             println("  initial_werner_w = ", case.initial_werner_w)
+            println("  source_node = ", EXP2_SOURCE_NODE)
+            println("  destination_node = ", EXP2_DESTINATION_NODE)
             println("  output_txt = ", output_txt)
             flush(stdout)
 
             rows = run_qtsp_window_update(;
+                topology=EXP2_TOPOLOGY,
+                source_node=EXP2_SOURCE_NODE,
+                destination_node=EXP2_DESTINATION_NODE,
                 target_tp,
                 iterations=EXP2_ITERATIONS,
                 initial_window_size=case.initial_window_size,

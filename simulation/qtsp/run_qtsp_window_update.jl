@@ -1,12 +1,16 @@
-include("qtsp_window_update_two_node.jl")
+include(joinpath(@__DIR__, "protocol", "qtsp_window_update_runner.jl"))
 
 # gamma and delta
+
 script_update_stepsize(n) = 1 / (n + 100)^0.7
 script_werner_perturbation(n) = 0.05 / (n + 50)^0.15
 # Parameters for the QTSP window update
 const QTSP_WINDOW_UPDATE_SCRIPT_PARAMS = (;
+    topology=qtsp_graph,
+    source_node=1,
+    destination_node=7,
     target_tp=2.4,
-    iterations=10,
+    iterations=100,
     initial_window_size=10,
     initial_werner_w=0.75,
     max_window_size=100,
@@ -31,7 +35,7 @@ const QTSP_WINDOW_UPDATE_SCRIPT_PARAMS = (;
     quantum_delay=1.0,
     initial_delay=0.0,
     source_ack_timeout=10.0,
-    window_stats_interval=1000.0,
+    window_stats_interval=100.0,
 )
 
 function main()

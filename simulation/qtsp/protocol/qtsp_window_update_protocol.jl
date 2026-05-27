@@ -1,4 +1,5 @@
-isdefined(@__MODULE__, :QTSPSourceController) || include("qtsp_components.jl")
+isdefined(@__MODULE__, :QTSPSourceController) ||
+    include(joinpath(@__DIR__, "qtsp_components.jl"))
 
 using Printf
 using Random
@@ -308,6 +309,7 @@ end
     source_retain_slots::Int = max_window_size
     source_send_slot::Int = source_retain_start_slot + source_retain_slots
     destination_receive_start_slot::Int = QTSP_DESTINATION_RECEIVE_START_SLOT
+    forward_slot::Int = QTSP_DESTINATION_RECEIVE_START_SLOT
     control::QTSPSourceControl
     window_estimate::Base.RefValue{Float64}
     werner_w::Base.RefValue{Float64}
@@ -319,6 +321,7 @@ end
     timeout_log::Vector{QTSPStateInfo} = QTSPStateInfo[]
     late_ack_log::Vector{QTSPStateInfo} = QTSPStateInfo[]
     failure_log::Vector{QTSPStateInfo} = QTSPStateInfo[]
+    forward_log::Vector{QTSPForwardInfo} = QTSPForwardInfo[]
     window_log::Vector{QTSPWindowInfo} = QTSPWindowInfo[]
     rows::Vector{NamedTuple} = NamedTuple[]
 end
@@ -352,6 +355,7 @@ function build_qtsp_window_update_protocol(; sim,
         source_retain_slots=max_window_size,
         source_send_slot=source_retain_start_slot + source_retain_slots,
         destination_receive_start_slot=QTSP_DESTINATION_RECEIVE_START_SLOT,
+        forward_slot=QTSP_DESTINATION_RECEIVE_START_SLOT,
         update_stepsize=qtsp_update_stepsize,
         werner_perturbation=qtsp_update_werner_perturbation,
         rng=Random.MersenneTwister(qtsp_update_seed_for(300_000_000, 0, 1)),
@@ -372,7 +376,7 @@ function build_qtsp_window_update_protocol(; sim,
     ))
     isnothing(probe_runner) && throw(ArgumentError(
         "QTSPWindowUpdateProtocol requires a probe_runner. " *
-        "Pass a custom probe runner for the target network, or use build_two_node_qtsp_window_update_protocol(...) for the current two-node experiment.",
+        "Pass a probe runner for the target network.",
     ))
     qtsp_eval_update_stepsize(update_stepsize, 1)
     qtsp_eval_werner_perturbation(werner_perturbation, 1)
@@ -428,6 +432,7 @@ function build_qtsp_window_update_protocol(; sim,
         source_retain_slots,
         source_send_slot,
         destination_receive_start_slot,
+        forward_slot,
         control,
         window_estimate=Ref(initial_window_estimate),
         werner_w=Ref(Float64(initial_werner_w)),
@@ -509,6 +514,16 @@ function qtsp_window_update_after_window!(prot::QTSPWindowUpdateProtocol,
 end
 
 @resumable function (prot::QTSPWindowUpdateProtocol)()
+    qtsp_install_wrapped_qchannels!(prot.net)
+    launch_qtsp_quantum_routers!(prot.sim, prot.net;
+        source_node=prot.source_node,
+        destination_node=prot.destination_node,
+        state_count=nothing,
+        forward_slot=prot.forward_slot,
+        flow_uuid=prot.flow_uuid,
+        forward_log=prot.forward_log,
+    )
+
     @process QTSPDestinationController(;
         sim=prot.sim,
         net=prot.net,
