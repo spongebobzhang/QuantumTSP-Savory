@@ -1,2 +1,0 @@
-run_index	run_seed	initial_werner_w	iterations	final_observed_tp	final_window_estimate	final_window_used	final_werner_w	final_send_rate	output_txt	run_dir
-1	1081310747	0.8178679587436591	10000	0.37333333333333335	6.0480971146289155	7	0.28783339631111576	18.0332826883852	/home/fangzz/tmpe/QuantumTSP-Savory/simulation/qtsp/experiment/exp2/result/20260629_185730_run_001_seed_1081310747_w_0p817868/window_update_results.txt	/home/fangzz/tmpe/QuantumTSP-Savory/simulation/qtsp/experiment/exp2/result/20260629_185730_run_001_seed_1081310747_w_0p817868
