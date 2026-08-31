@@ -1,1 +1,0 @@
-This is a script to simulate the update starting from different window size, werner parameter and target throughput.
