@@ -9,6 +9,14 @@ julia --project=. -e 'using Pkg; Pkg.instantiate()'
 
 **Usage:** In qtsp_topologies.jl edges_list can be set to create a network. Source and destination can set in run_qtsp_experiments.jl/run_qtsp_window_update.jl for two kinds of experiments. 
 
+For SURFnet, `surfnet_graph()` builds the topology from the Topology Zoo
+GraphML data in `data/Surfnet.graphml`. `surfnet_classical_delay_map()` uses
+node latitude/longitude and great-circle distance to create per-link classical
+delays. Pass it as `edge_classical_delays=surfnet_classical_delay_map()`;
+otherwise the scalar `classical_delay` is used for every link.
+Use `graphml_to_qtsp_topology.py` to extract another GraphML file into Julia
+topology helper functions.
+
 
 **The run command remains unchanged:**
 
@@ -18,7 +26,6 @@ To simulate the process with fixed window size and werner parameter, run:
 julia --project=. simulation/qtsp/run_qtsp_experiments.jl
 ```
 Parameters can be set in run_qtsp_experiments.jl. The default output file is qtsp_results.txt.
-
 
 To simulate the continuous update process on a network, run:
 
@@ -31,8 +38,11 @@ qtsp_window_update_results.txt.
 
 To plot the result after window update, in qtsp directory run:
 ```bash
-python3 plot_qtsp_window_results.py result.txt output.png
+python3 plot_qtsp_window_results.py result/dir1/result.txt
 ```
+This writes four plots: observed throughput, gamma/delta, window size, and
+Werner parameter. The plots are written next to the result file using the result
+filename as the prefix.
 May consider to replace it with one based on julia.
 
 

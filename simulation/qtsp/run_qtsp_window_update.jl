@@ -6,11 +6,11 @@ script_update_stepsize(n) = 1 / (n + 100)^0.7
 script_werner_perturbation(n) = 0.05 / (n + 50)^0.15
 # Parameters for the QTSP window update
 const QTSP_WINDOW_UPDATE_SCRIPT_PARAMS = (;
-    topology=qtsp_graph,
+    topology=surfnet_graph,
     source_node=1,
     destination_node=7,
     target_tp=2.4,
-    iterations=100,
+    iterations=10,
     initial_window_size=10,
     initial_werner_w=0.75,
     max_window_size=100,
@@ -31,7 +31,10 @@ const QTSP_WINDOW_UPDATE_SCRIPT_PARAMS = (;
     detector_a_p=0.9,
     detection_prob=nothing,
     memory_slots=nothing,
-    classical_delay=0.0,
+    # this is the fixed delay for classical channels
+    classical_delay=0.1,
+    # this is to set the classical delay based on distance
+    edge_classical_delays=surfnet_classical_delay_map(),
     quantum_delay=1.0,
     initial_delay=0.0,
     source_ack_timeout=10.0,

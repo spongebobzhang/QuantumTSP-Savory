@@ -18,13 +18,15 @@ function qtsp_materialize_topology(topology)
     graph
 end
 
-function build_qtsp_network_from_topology(; topology=qtsp_grid4x4_graph,
+function build_qtsp_network_from_topology(; topology=qtsp_graph,
         memory_slots=QTSP_DEFAULT_MEMORY_SLOTS,
         classical_delay=QTSP_DEFAULT_CLASSICAL_DELAY,
+        edge_classical_delays=nothing,
         quantum_delay=QTSP_DEFAULT_QUANTUM_DELAY)
     graph = qtsp_materialize_topology(topology)
     registers = [Register(memory_slots) for _ in Graphs.vertices(graph)]
     net = RegisterNet(graph, registers; classical_delay, quantum_delay)
+    qtsp_apply_classical_delays!(net, edge_classical_delays)
     sim = get_time_tracker(net)
 
     sim, net, graph
@@ -32,7 +34,7 @@ end
 
 function run_qtsp_window_update_network_probe(;
         # default parameters
-        topology=qtsp_grid4x4_graph,
+        topology=qtsp_graph,
         source_node=QTSP_SOURCE_NODE,
         destination_node=nothing,
         werner_w=QTSP_WINDOW_UPDATE_DEFAULT_CASE.werner_w,
@@ -48,6 +50,7 @@ function run_qtsp_window_update_network_probe(;
         detection_prob=QTSP_WINDOW_UPDATE_DEFAULT_CASE.detection_prob,
         memory_slots=QTSP_WINDOW_UPDATE_DEFAULT_CASE.memory_slots,
         classical_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.classical_delay,
+        edge_classical_delays=QTSP_WINDOW_UPDATE_DEFAULT_CASE.edge_classical_delays,
         quantum_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.quantum_delay,
         initial_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.initial_delay,
         source_ack_timeout=QTSP_WINDOW_UPDATE_DEFAULT_CASE.source_ack_timeout,
@@ -60,7 +63,7 @@ function run_qtsp_window_update_network_probe(;
         max(QTSP_DEFAULT_MEMORY_SLOTS, source_send_slot,
             QTSP_DESTINATION_RECEIVE_START_SLOT, forward_slot))
     sim, net, graph = build_qtsp_network_from_topology(; topology, memory_slots,
-        classical_delay, quantum_delay)
+        classical_delay, edge_classical_delays, quantum_delay)
     destination_node = something(destination_node, Graphs.nv(graph))
 
     run_network_qtsp(;
@@ -138,7 +141,7 @@ end
 
 function network_qtsp_window_update_probe_runner(prot::QTSPWindowUpdateProtocol,
         plus_w, minus_w, n, window_info; topology, memory_slots,
-        classical_delay, quantum_delay)
+        classical_delay, edge_classical_delays, quantum_delay)
     window_used = prot.control.window_size
     probe_case = (;
         topology,
@@ -156,6 +159,7 @@ function network_qtsp_window_update_probe_runner(prot::QTSPWindowUpdateProtocol,
         detection_prob=prot.detection_prob,
         memory_slots,
         classical_delay,
+        edge_classical_delays,
         quantum_delay,
         initial_delay=0.0,
         source_ack_timeout=prot.source_ack_timeout,
@@ -167,7 +171,7 @@ function network_qtsp_window_update_probe_runner(prot::QTSPWindowUpdateProtocol,
 end
 
 function build_network_qtsp_window_update_protocol(;
-        topology=qtsp_grid4x4_graph,
+        topology=qtsp_graph,
         source_node=QTSP_SOURCE_NODE,
         destination_node=nothing,
         target_tp=QTSP_TARGET_TP,
@@ -187,6 +191,7 @@ function build_network_qtsp_window_update_protocol(;
         detection_prob=QTSP_WINDOW_UPDATE_DEFAULT_CASE.detection_prob,
         memory_slots=QTSP_WINDOW_UPDATE_DEFAULT_CASE.memory_slots,
         classical_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.classical_delay,
+        edge_classical_delays=QTSP_WINDOW_UPDATE_DEFAULT_CASE.edge_classical_delays,
         quantum_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.quantum_delay,
         initial_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.initial_delay,
         source_ack_timeout=QTSP_WINDOW_UPDATE_DEFAULT_CASE.source_ack_timeout,
@@ -203,11 +208,12 @@ function build_network_qtsp_window_update_protocol(;
         max(QTSP_DEFAULT_MEMORY_SLOTS, source_send_slot,
             QTSP_DESTINATION_RECEIVE_START_SLOT, forward_slot))
     sim, net, graph = build_qtsp_network_from_topology(; topology, memory_slots,
-        classical_delay, quantum_delay)
+        classical_delay, edge_classical_delays, quantum_delay)
     destination_node = something(destination_node, Graphs.nv(graph))
     probe_runner = (prot, plus_w, minus_w, n, window_info) ->
         network_qtsp_window_update_probe_runner(prot, plus_w, minus_w, n,
-            window_info; topology, memory_slots, classical_delay, quantum_delay)
+            window_info; topology, memory_slots, classical_delay,
+            edge_classical_delays, quantum_delay)
 
     build_qtsp_window_update_protocol(;
         sim,
@@ -248,7 +254,7 @@ function build_network_qtsp_window_update_protocol(;
 end
 
 function run_qtsp_window_update(;
-        topology=qtsp_grid4x4_graph,
+        topology=qtsp_graph,
         source_node=QTSP_SOURCE_NODE,
         destination_node=nothing,
         target_tp=QTSP_TARGET_TP,
@@ -269,6 +275,7 @@ function run_qtsp_window_update(;
         detection_prob=QTSP_WINDOW_UPDATE_DEFAULT_CASE.detection_prob,
         memory_slots=QTSP_WINDOW_UPDATE_DEFAULT_CASE.memory_slots,
         classical_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.classical_delay,
+        edge_classical_delays=QTSP_WINDOW_UPDATE_DEFAULT_CASE.edge_classical_delays,
         quantum_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.quantum_delay,
         initial_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.initial_delay,
         source_ack_timeout=QTSP_WINDOW_UPDATE_DEFAULT_CASE.source_ack_timeout,
@@ -296,6 +303,7 @@ function run_qtsp_window_update(;
         detection_prob,
         memory_slots,
         classical_delay,
+        edge_classical_delays,
         quantum_delay,
         initial_delay,
         source_ack_timeout,
@@ -321,6 +329,22 @@ function run_qtsp_window_update(;
         initial_werner_w,
         max_window_size,
         probe_repeats,
+        source_node,
+        destination_node=protocol.destination_node,
+        flow_uuid,
+        chi,
+        send_rate,
+        distance_km,
+        a_eta,
+        beta_per_km,
+        detector_a_p,
+        detection_prob,
+        memory_slots,
+        classical_delay,
+        edge_classical_delays,
+        quantum_delay,
+        initial_delay,
+        source_ack_timeout,
         update_stepsize,
         werner_perturbation,
     )

@@ -22,6 +22,7 @@ const QTSP_WINDOW_UPDATE_DEFAULT_CASE = (;
     max_window_size=100,
     memory_slots=nothing,
     classical_delay=0.0,
+    edge_classical_delays=nothing,
     quantum_delay=1.0,
     initial_delay=0.0,
     source_ack_timeout=10.0,
@@ -239,6 +240,48 @@ function print_qtsp_window_update_parameters(io; target_tp, iterations, sim_time
     println(io)
 end
 
+qtsp_wu_edge_delay_summary(::Nothing) = "nothing"
+
+function qtsp_wu_edge_delay_summary(edge_classical_delays::AbstractDict)
+    isempty(edge_classical_delays) && return "provided (0 edges)"
+
+    delays = Float64[value for value in values(edge_classical_delays)]
+    @sprintf("provided (%d edges; min=%.9g, max=%.9g, mean=%.9g)",
+        length(delays), minimum(delays), maximum(delays),
+        sum(delays) / length(delays))
+end
+
+qtsp_wu_edge_delay_summary(edge_classical_delays::Function) =
+    "provided as function"
+
+qtsp_wu_edge_delay_summary(edge_classical_delays) = string(edge_classical_delays)
+
+function print_qtsp_window_update_simulation_parameters(io; source_node,
+        destination_node, flow_uuid, chi, send_rate, distance_km, a_eta,
+        beta_per_km, detector_a_p, detection_prob, memory_slots,
+        classical_delay, edge_classical_delays, quantum_delay, initial_delay,
+        source_ack_timeout)
+    println(io, "Run simulation parameters:")
+    println(io, "  source_node = ", source_node)
+    println(io, "  destination_node = ", destination_node)
+    println(io, "  flow_uuid = ", flow_uuid)
+    println(io, "  chi = ", chi)
+    println(io, "  send_rate = ", send_rate)
+    println(io, "  distance_km = ", distance_km)
+    println(io, "  a_eta = ", a_eta)
+    println(io, "  beta_per_km = ", beta_per_km)
+    println(io, "  detector_a_p = ", detector_a_p)
+    println(io, "  detection_prob = ", detection_prob)
+    println(io, "  memory_slots = ", memory_slots)
+    println(io, "  classical_delay_fallback = ", classical_delay)
+    println(io, "  edge_classical_delays = ",
+        qtsp_wu_edge_delay_summary(edge_classical_delays))
+    println(io, "  quantum_delay = ", quantum_delay)
+    println(io, "  initial_delay = ", initial_delay)
+    println(io, "  source_ack_timeout = ", source_ack_timeout)
+    println(io)
+end
+
 function write_qtsp_window_update_results(path, rows; target_tp=QTSP_TARGET_TP,
         iterations=QTSP_UPDATE_ITERS,
         sim_time=iterations * QTSP_WINDOW_UPDATE_DEFAULT_CASE.window_stats_interval,
@@ -247,6 +290,22 @@ function write_qtsp_window_update_results(path, rows; target_tp=QTSP_TARGET_TP,
         initial_werner_w=QTSP_INITIAL_WERNER_W,
         max_window_size=QTSP_WINDOW_UPDATE_DEFAULT_CASE.max_window_size,
         probe_repeats=QTSP_PROBE_REPEATS,
+        source_node=QTSP_SOURCE_NODE,
+        destination_node=QTSP_DESTINATION_NODE,
+        flow_uuid=QTSP_WINDOW_UPDATE_DEFAULT_CASE.flow_uuid,
+        chi=QTSP_WINDOW_UPDATE_DEFAULT_CASE.chi,
+        send_rate=QTSP_WINDOW_UPDATE_DEFAULT_CASE.send_rate,
+        distance_km=QTSP_WINDOW_UPDATE_DEFAULT_CASE.distance_km,
+        a_eta=QTSP_WINDOW_UPDATE_DEFAULT_CASE.a_eta,
+        beta_per_km=QTSP_WINDOW_UPDATE_DEFAULT_CASE.beta_per_km,
+        detector_a_p=QTSP_WINDOW_UPDATE_DEFAULT_CASE.detector_a_p,
+        detection_prob=QTSP_WINDOW_UPDATE_DEFAULT_CASE.detection_prob,
+        memory_slots=QTSP_WINDOW_UPDATE_DEFAULT_CASE.memory_slots,
+        classical_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.classical_delay,
+        edge_classical_delays=QTSP_WINDOW_UPDATE_DEFAULT_CASE.edge_classical_delays,
+        quantum_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.quantum_delay,
+        initial_delay=QTSP_WINDOW_UPDATE_DEFAULT_CASE.initial_delay,
+        source_ack_timeout=QTSP_WINDOW_UPDATE_DEFAULT_CASE.source_ack_timeout,
         update_stepsize=qtsp_update_stepsize,
         werner_perturbation=qtsp_update_werner_perturbation)
     open(path, "w") do io
@@ -268,6 +327,24 @@ function write_qtsp_window_update_results(path, rows; target_tp=QTSP_TARGET_TP,
             probe_repeats,
             update_stepsize,
             werner_perturbation,
+        )
+        print_qtsp_window_update_simulation_parameters(io;
+            source_node,
+            destination_node,
+            flow_uuid,
+            chi,
+            send_rate,
+            distance_km,
+            a_eta,
+            beta_per_km,
+            detector_a_p,
+            detection_prob,
+            memory_slots,
+            classical_delay,
+            edge_classical_delays,
+            quantum_delay,
+            initial_delay,
+            source_ack_timeout,
         )
         qtsp_wu_print_header(io)
 
@@ -313,7 +390,8 @@ end
     control::QTSPSourceControl
     window_estimate::Base.RefValue{Float64}
     werner_w::Base.RefValue{Float64}
-    rng::Random.AbstractRNG = Random.MersenneTwister(qtsp_update_seed_for(300_000_000, 0, 1))
+    rng::Random.AbstractRNG = Random.MersenneTwister(
+        qtsp_update_seed_for(300_000_000, 0, 1))
     on_update::Any = nothing
     send_log::Vector{QTSPStateInfo} = QTSPStateInfo[]
     receive_log::Vector{QTSPStateInfo} = QTSPStateInfo[]

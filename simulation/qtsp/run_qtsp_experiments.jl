@@ -7,12 +7,12 @@ const QTSP_OUTPUT_TXT = joinpath(@__DIR__, "qtsp_results.txt")
 const QTSP_PRINT_STATE_DETAILS = false
 
 const QTSP_DEFAULT_EXPERIMENT_CASE = (;
-    topology=qtsp_graph,
+    topology=surfnet_graph,
     source_node=1,
-    destination_node=8,
+    destination_node=20,
     flow_uuid=QTSP_DEFAULT_FLOW_UUID,
     state_count=nothing,
-    window_size=5,
+    window_size=20,
     werner_w=0.9,
     chi=30.0,
     send_rate=nothing,
@@ -22,13 +22,16 @@ const QTSP_DEFAULT_EXPERIMENT_CASE = (;
     detector_a_p=0.9,
     detection_prob=nothing,
     memory_slots=100,
+    # this is the fixed delay for classical channels
     classical_delay=0.1,
+    # this is to set the classical delay based on distance
+    edge_classical_delays=surfnet_classical_delay_map(),
     quantum_delay=1.0,
     send_interval=nothing,
     initial_delay=0.0,
     source_ack_timeout=10.0,
-    window_stats_interval=50,
-    sim_time=500.0,
+    window_stats_interval=100,
+    sim_time=300.0,
 )
 
 const QTSP_EXPERIMENT_CASES = (
@@ -175,9 +178,11 @@ function qtsp_run_network_case(case)
     source_node = qtsp_get(case, :source_node, 1)
     destination_node = qtsp_get(case, :destination_node, Graphs.nv(graph))
     classical_delay = qtsp_get(case, :classical_delay, QTSP_DEFAULT_CLASSICAL_DELAY)
+    edge_classical_delays = qtsp_get(case, :edge_classical_delays, nothing)
     quantum_delay = qtsp_get(case, :quantum_delay, QTSP_DEFAULT_QUANTUM_DELAY)
     net = RegisterNet(graph, [Register(memory_slots) for _ in Graphs.vertices(graph)];
         classical_delay, quantum_delay)
+    qtsp_apply_classical_delays!(net, edge_classical_delays)
 
     result = run_network_qtsp(;
         net,

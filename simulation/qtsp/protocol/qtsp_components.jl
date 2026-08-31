@@ -938,6 +938,38 @@ function qtsp_install_wrapped_qchannels!(net::RegisterNet)
     net
 end
 
+function qtsp_edge_classical_delay(edge_classical_delays::AbstractDict, src, dst)
+    if haskey(edge_classical_delays, (src, dst))
+        return edge_classical_delays[(src, dst)]
+    elseif haskey(edge_classical_delays, (dst, src))
+        return edge_classical_delays[(dst, src)]
+    elseif haskey(edge_classical_delays, src=>dst)
+        return edge_classical_delays[src=>dst]
+    elseif haskey(edge_classical_delays, dst=>src)
+        return edge_classical_delays[dst=>src]
+    end
+
+    throw(ArgumentError("Missing classical delay for edge $(src)<=>$(dst)."))
+end
+
+qtsp_edge_classical_delay(edge_classical_delays::Function, src, dst) =
+    edge_classical_delays(src, dst)
+
+function qtsp_apply_classical_delays!(net::RegisterNet, edge_classical_delays)
+    isnothing(edge_classical_delays) && return net
+
+    for (; src, dst) in Graphs.edges(net.graph)
+        delay = Float64(qtsp_edge_classical_delay(edge_classical_delays, src, dst))
+        delay >= 0 || throw(ArgumentError(
+            "Classical delay for edge $(src)<=>$(dst) must be non-negative. Got $(delay).",
+        ))
+        net.cchannels[src=>dst].delay = delay
+        net.cchannels[dst=>src].delay = delay
+    end
+
+    net
+end
+
 function qtsp_routing_path(net::RegisterNet, source_node::Int,
         destination_node::Int)
     route = [source_node]
