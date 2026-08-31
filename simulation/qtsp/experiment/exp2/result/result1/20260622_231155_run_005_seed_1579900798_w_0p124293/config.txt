@@ -1,0 +1,40 @@
+QTSP exp2 random initial Werner parameter run
+created_at = 2026-06-23T00:53:29
+
+master_seed = 20260623
+batch_id = 20260622_231155
+run_index = 5
+run_seed = 1579900798
+initial_werner_w = 0.12429314972071126
+initial_werner_range = (0.1, 0.95)
+output_txt = /home/fangzz/tmpe/QuantumTSP-Savory/simulation/qtsp/experiment/exp2/result/20260622_231155_run_005_seed_1579900798_w_0p124293/window_update_results.txt
+edge_delay_txt = /home/fangzz/tmpe/QuantumTSP-Savory/simulation/qtsp/experiment/exp2/result/20260622_231155_run_005_seed_1579900798_w_0p124293/edge_classical_delays.tsv
+result_dir = /home/fangzz/tmpe/QuantumTSP-Savory/simulation/qtsp/experiment/exp2/result/20260622_231155_run_005_seed_1579900798_w_0p124293
+
+target_tp = 1.0
+iterations = 2000
+initial_window_size = 10
+max_window_size = 100
+sim_time = nothing
+probe_repeats = 1
+window_stats_interval = 300.0
+source_node = 22
+destination_node = 9
+flow_uuid = 4001
+chi = 30.0
+send_rate = nothing
+distance_km = 25.0
+a_eta = 1.0
+beta_per_km = 0.046
+detector_a_p = 0.9
+detection_prob = nothing
+memory_slots = nothing
+classical_delay = 0.0
+classical_delay_role = fallback only; per-edge delays override it
+edge_classical_delays = provided (68 edges; min=1.449228e-05, max=0.000561314176, mean=0.000157884802)
+surfnet_signal_speed_km_per_time = 200000.0
+surfnet_path_stretch = 1.0
+surfnet_per_link_processing_delay = 0.0
+quantum_delay = 1.0
+initial_delay = 0.0
+source_ack_timeout = 10.0
