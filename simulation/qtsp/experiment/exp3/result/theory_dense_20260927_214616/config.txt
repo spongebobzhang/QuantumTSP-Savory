@@ -1,0 +1,17 @@
+QTSP exp3 static throughput regression
+created_at = 2026-09-27T21:46:16
+batch_id = theory_dense_20260927_214616
+case_name = theory_dense
+reuse_batch = simulation/qtsp/experiment/exp3/result/theory_fine_20260921_230324
+master_seed = 20260921
+chi = 3.0
+memory_slots = 128
+repeats = 5
+window_sizes = 4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,40,44,48,52,56,60,64
+werner_values = 0.0125,0.025,0.0375,0.05,0.0625,0.075,0.0875,0.1,0.1125,0.125,0.1375,0.15,0.1625,0.175,0.1875,0.2,0.2125,0.225,0.2375,0.25,0.2625,0.275,0.2875,0.3,0.3125,0.325,0.3333333333333333,0.3375,0.35,0.3625,0.375,0.3875,0.4,0.4125,0.425,0.4375,0.45,0.4625,0.475,0.4875,0.5,0.5125,0.525,0.5375,0.55,0.5625,0.575,0.5875,0.6,0.6125,0.625,0.6375,0.65,0.6625,0.675,0.6875,0.7,0.7125,0.725,0.7375,0.75,0.7625,0.775,0.7875,0.8,0.8125,0.825,0.8375,0.85,0.8625,0.875,0.8875,0.9,0.9125,0.925,0.9375,0.95,0.9625,0.975,0.9875
+source_node = 22
+destination_node = 9
+sim_time = 300.0
+window_stats_interval = 100.0
+edge_classical_delays = SURFnet distance-based
+distance_km = 25.0 (source attenuation model; not per-edge SURFnet distance)
