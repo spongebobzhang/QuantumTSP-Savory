@@ -298,6 +298,8 @@ Tag(ack::QTSPAck) = Tag(QTSPAck, ack.flow_uuid, ack.seq_num, ack.source_node,
     window_stats_interval::Float64 = QTSP_DEFAULT_WINDOW_STATS_INTERVAL
     control::Union{QTSPSourceControl,Nothing} = nothing
     window_update_callback::Any = nothing
+    # Shared flag used by adaptive protocols to stop after a converged window.
+    stop_requested::Base.RefValue{Bool} = Ref(false)
     send_log::Vector{QTSPStateInfo}
     ack_log::Vector{QTSPStateInfo}
     timeout_log::Vector{QTSPStateInfo}
@@ -572,7 +574,8 @@ It also records the state information and statistics.
     (; sim, net, source_node, destination_node, flow_uuid, state_count, source_stop_time,
         werner_w, window_size, source_retain_slots, source_retain_start_slot,
         source_send_slot, send_interval, initial_delay, source_ack_timeout,
-        window_stats_interval, control, window_update_callback, send_log, ack_log,
+        window_stats_interval, control, window_update_callback, stop_requested,
+        send_log, ack_log,
         timeout_log, late_ack_log, window_log) = prot
     # check check check all parameters
     !isnothing(state_count) && state_count > 0 || isnothing(state_count) ||
@@ -620,7 +623,7 @@ It also records the state information and statistics.
     @yield timeout(sim, initial_delay)
     # main loop: keep sending new states until the simulation ends
     # process ACKs and timeouts
-    while now(sim) < source_stop_time || !isempty(pending)
+    while ((!stop_requested[] && now(sim) < source_stop_time) || !isempty(pending))
         current_time = now(sim)
         if sample_window_stats
             # window stats are recorded every window_stats_interval
@@ -633,6 +636,7 @@ It also records the state information and statistics.
                     window_update_callback(window_log[end])
                     next_send_time = next_window_stats_time
                 end
+                stop_requested[] && break
                 empty!(window_sent_seq_nums)
                 empty!(window_acked_seq_nums)
                 empty!(window_timeout_seq_nums)
@@ -671,7 +675,7 @@ It also records the state information and statistics.
         current_time = now(sim)
         retain_slot_blocked = false
         # keep sending new states
-        while !qtsp_state_cap_reached(sent_count, state_count) &&
+        while !stop_requested[] && !qtsp_state_cap_reached(sent_count, state_count) &&
                 current_time < source_stop_time &&
                 current_time >= next_send_time
             current_window_size = qtsp_current_window_size(window_size,
@@ -725,12 +729,13 @@ It also records the state information and statistics.
             iszero(current_send_interval) || break
         end
 
-        now(sim) >= source_stop_time && isempty(pending) && break
+        (stop_requested[] || now(sim) >= source_stop_time) && isempty(pending) && break
         qtsp_state_cap_reached(sent_count, state_count) && isempty(pending) && break
 
         current_window_size = qtsp_current_window_size(window_size, source_retain_slots,
             control)
-        send_delay = if !qtsp_state_cap_reached(sent_count, state_count) &&
+        send_delay = if !stop_requested[] &&
+                !qtsp_state_cap_reached(sent_count, state_count) &&
                 now(sim) < source_stop_time &&
                 !retain_slot_blocked &&
                 length(pending) < current_window_size
@@ -739,7 +744,7 @@ It also records the state information and statistics.
             Inf
         end
         timeout_delay = next_qtsp_timeout_delay(pending, source_ack_timeout, now(sim))
-        window_stats_delay = sample_window_stats ?
+        window_stats_delay = sample_window_stats && !stop_requested[] ?
             max(0.0, next_window_stats_time - now(sim)) : Inf
 
         # the delay we may wait before doing the next action

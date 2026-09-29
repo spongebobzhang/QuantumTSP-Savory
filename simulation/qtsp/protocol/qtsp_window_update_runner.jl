@@ -199,7 +199,8 @@ function build_network_qtsp_window_update_protocol(;
         update_stepsize=qtsp_update_stepsize,
         werner_perturbation=qtsp_update_werner_perturbation,
         rng=Random.MersenneTwister(qtsp_update_seed_for(300_000_000, 0, 1)),
-        on_update=nothing)
+        on_update=nothing,
+        stop_condition=nothing)
     source_retain_start_slot = QTSP_SOURCE_RETAIN_START_SLOT
     source_retain_slots = qtsp_update_runnable_window_size(max_window_size)
     source_send_slot = source_retain_start_slot + source_retain_slots
@@ -250,6 +251,7 @@ function build_network_qtsp_window_update_protocol(;
         werner_perturbation,
         rng,
         on_update,
+        stop_condition,
     )
 end
 
@@ -281,7 +283,8 @@ function run_qtsp_window_update(;
         source_ack_timeout=QTSP_WINDOW_UPDATE_DEFAULT_CASE.source_ack_timeout,
         window_stats_interval=QTSP_WINDOW_UPDATE_DEFAULT_CASE.window_stats_interval,
         update_stepsize=qtsp_update_stepsize,
-        werner_perturbation=qtsp_update_werner_perturbation)
+        werner_perturbation=qtsp_update_werner_perturbation,
+        stop_condition=nothing)
     protocol = build_network_qtsp_window_update_protocol(;
         topology,
         source_node,
@@ -310,6 +313,7 @@ function run_qtsp_window_update(;
         window_stats_interval,
         update_stepsize,
         werner_perturbation,
+        stop_condition,
         on_update=row -> begin
             qtsp_wu_print_update_row(stdout, row)
             flush(stdout)
@@ -320,10 +324,12 @@ function run_qtsp_window_update(;
     flush(stdout)
     run_qtsp_window_update_protocol!(protocol)
 
+    actual_iterations = length(protocol.rows)
+    actual_sim_time = isempty(protocol.rows) ? 0.0 : protocol.rows[end].window_end
     write_qtsp_window_update_results(output_txt, protocol.rows;
         target_tp,
-        iterations,
-        sim_time=protocol.source_stop_time,
+        iterations=actual_iterations,
+        sim_time=actual_sim_time,
         window_stats_interval,
         initial_window_size,
         initial_werner_w,

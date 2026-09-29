@@ -393,6 +393,9 @@ end
     rng::Random.AbstractRNG = Random.MersenneTwister(
         qtsp_update_seed_for(300_000_000, 0, 1))
     on_update::Any = nothing
+    # Optional predicate called after each update row; true requests early stop.
+    stop_condition::Any = nothing
+    stop_requested::Base.RefValue{Bool} = Ref(false)
     send_log::Vector{QTSPStateInfo} = QTSPStateInfo[]
     receive_log::Vector{QTSPStateInfo} = QTSPStateInfo[]
     ack_log::Vector{QTSPStateInfo} = QTSPStateInfo[]
@@ -437,7 +440,8 @@ function build_qtsp_window_update_protocol(; sim,
         update_stepsize=qtsp_update_stepsize,
         werner_perturbation=qtsp_update_werner_perturbation,
         rng=Random.MersenneTwister(qtsp_update_seed_for(300_000_000, 0, 1)),
-        on_update=nothing)
+        on_update=nothing,
+        stop_condition=nothing)
     iterations > 0 || throw(ArgumentError("iterations must be positive. Got $(iterations)."))
     probe_repeats > 0 || throw(ArgumentError("probe_repeats must be positive. Got $(probe_repeats)."))
     window_stats_interval > 0 || throw(ArgumentError(
@@ -516,11 +520,14 @@ function build_qtsp_window_update_protocol(; sim,
         werner_w=Ref(Float64(initial_werner_w)),
         rng,
         on_update,
+        stop_condition,
+        stop_requested=Ref(false),
     )
 end
 
 function qtsp_window_update_after_window!(prot::QTSPWindowUpdateProtocol,
         window_info::QTSPWindowInfo)
+    prot.stop_requested[] && return nothing
     n = window_info.window_index
     n > prot.iterations && return nothing
 
@@ -588,6 +595,10 @@ function qtsp_window_update_after_window!(prot::QTSPWindowUpdateProtocol,
     prot.control.werner_w = next_werner_w
     prot.control.send_interval = 1 / next_send_rate
 
+    if !isnothing(prot.stop_condition) && prot.stop_condition(prot, row)
+        prot.stop_requested[] = true
+    end
+
     nothing
 end
 
@@ -627,6 +638,7 @@ end
         flow_uuid=prot.flow_uuid,
         state_count=nothing,
         source_stop_time=prot.source_stop_time,
+        stop_requested=prot.stop_requested,
         window_size=prot.control.window_size,
         source_retain_slots=prot.source_retain_slots,
         werner_w=prot.initial_werner_w,
